@@ -49,20 +49,22 @@ AI-powered construction site inspection using wearable cameras. Detects PPE comp
 ### Setup
 
 ```bash
-cd backend
+git clone https://github.com/KinetikHQ/ar-survey-backend.git
+cd ar-survey-backend
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate        # macOS/Linux
+# venv\Scripts\activate         # Windows
 pip install -r requirements.txt
 pip install -r ai/requirements-ai.txt
-cp .env.example .env
+cp .env.example .env            # macOS/Linux
+# copy .env.example .env        # Windows
 ```
 
 ### Run
 
 ```bash
-# Start the API server
-cd backend
-source venv/bin/activate
+source venv/bin/activate        # macOS/Linux
+# venv\Scripts\activate         # Windows
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -311,7 +313,6 @@ Docker services: API (`:8000`), Worker, PostgreSQL (`:5432`), Redis (`:6379`), M
 ### Running Tests
 
 ```bash
-cd backend
 source venv/bin/activate
 
 # Full test suite
