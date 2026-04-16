@@ -52,20 +52,30 @@ from pydantic import BaseModel, Field
 
 
 class UploadInitRequest(BaseModel):
-    device_id: str = Field(..., min_length=1)
-    duration_seconds: int = Field(..., ge=5, le=120)
-    content_type: str = "video/mp4"
+    device_id: str = Field(..., min_length=1, alias="deviceId")
+    duration_seconds: int = Field(..., ge=5, le=120, alias="durationSeconds")
+    content_type: str = Field(default="video/mp4", alias="contentType")
+
+    model_config = {"populate_by_name": True}
 
 
 class UploadInitResponse(BaseModel):
-    job_id: uuid.UUID
-    upload_url: str
-    expires_at: str
+    job_id: uuid.UUID = Field(alias="jobId")
+    upload_url: str = Field(alias="uploadUrl")
+    expires_at: str = Field(alias="expiresAt")
+
+    model_config = {"populate_by_name": True}
+
+    def model_dump(self, **kwargs):
+        kwargs.setdefault("by_alias", True)
+        return super().model_dump(**kwargs)
 
 
 class UploadCompleteRequest(BaseModel):
-    job_id: uuid.UUID
-    file_size_bytes: int = Field(..., gt=0)
+    job_id: uuid.UUID = Field(..., alias="jobId")
+    file_size_bytes: int = Field(..., gt=0, alias="fileSizeBytes")
+
+    model_config = {"populate_by_name": True}
 
 
 class UploadCompleteResponse(BaseModel):
