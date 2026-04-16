@@ -89,7 +89,9 @@ def generate_presigned_upload_url(job_id: uuid.UUID, content_type: str) -> Presi
         )
     else:
         # Dev mode: return a local upload endpoint
-        url = f"http://localhost:8000/api/v1/dev/upload/{job_id}"
+        # Use request Host header or configured base URL — never localhost (phone can't reach it)
+        url = f"/api/v1/dev/upload/{job_id}"
+        url = settings.DEV_UPLOAD_BASE_URL.rstrip("/") + url
     return {"url": url, "expires_at": expires_at.isoformat()}
 
 

@@ -22,12 +22,18 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = "minioadmin"
 
     # --- Auth ---
-    API_KEY: str = "dev-api-key-change-me"
+    API_KEY: str = "dev-api-key-change-in-prod"
 
     # --- AI Worker ---
     MODEL_DEVICE: str = Field(default="cpu", description="cpu or cuda")
     SAM_MODEL: str = Field(default="vit_b", description="SAM model variant")
     FRAME_SAMPLE_RATE: int = Field(default=1, description="Frames per second to sample")
+
+    # --- Dev mode ---
+    DEV_UPLOAD_BASE_URL: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for dev upload endpoint (use PC IP for phone access)",
+    )
 
 
 settings = Settings()
