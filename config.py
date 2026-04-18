@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # --- AI Worker ---
     MODEL_DEVICE: str = Field(default="cpu", description="cpu or cuda")
     SAM_MODEL: str = Field(default="vit_b", description="SAM model variant")
+    SAM2_MODEL: str = Field(
+        default="facebook/sam2.1-hiera-tiny",
+        description="SAM2 model ID (tiny/small/base-plus/large)",
+    )
+    USE_SAM2: bool = Field(default=True, description="Enable SAM2 tracking pipeline")
     FRAME_SAMPLE_RATE: int = Field(default=1, description="Frames per second to sample")
 
 

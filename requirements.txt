@@ -9,7 +9,14 @@ python-multipart==0.0.20
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
 python-jose[cryptography]==3.3.0
+numpy>=1.24.4
 
 # Testing
 pytest>=8.0.0
 httpx>=0.27.0
+
+# SAM2 (optional — requires Python >= 3.10, PyTorch >= 2.5.1)
+# Install from source:
+#   git clone https://github.com/facebookresearch/sam2.git
+#   cd sam2 && pip install -e .
+# Pipeline falls back gracefully if SAM2 is not installed.
