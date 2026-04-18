@@ -5,10 +5,10 @@ aiosqlite==0.20.0
 redis==5.2.1
 rq==2.1.0
 boto3==1.35.90
-python-multipart==0.0.20
+python-multipart>=0.0.20
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
-python-jose[cryptography]==3.3.0
+PyJWT>=2.8.0
 numpy>=1.24.4
 
 # Testing

@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8000"
 
     # --- Auth ---
-    API_KEY: str = "dev-api-key-change-me"
+    API_KEY: str = "dev-api-key-change-in-prod"
     JWT_SECRET: str = "super-secret-jwt-key-change-in-prod"
+    ENVIRONMENT: str = Field(default="development", description="development or production")
 
     # --- AI Worker ---
     MODEL_DEVICE: str = Field(default="cpu", description="cpu or cuda")

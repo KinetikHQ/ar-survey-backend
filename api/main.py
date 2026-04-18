@@ -4,9 +4,11 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.routes import router
+from config import settings
 from models.database import Base
 from models.session import engine
 
@@ -19,6 +21,25 @@ app = FastAPI(
     title="AR Survey & Inspection API",
     version="1.0.0",
     description="Backend for construction-site PPE detection from video clips.",
+)
+
+# ---------------------------------------------------------------------------
+# CORS — restrict origins in production
+# ---------------------------------------------------------------------------
+_allowed_origins = (
+    ["*"]
+    if settings.ENVIRONMENT == "development"
+    else [
+        # Add your production domains here
+    ]
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
