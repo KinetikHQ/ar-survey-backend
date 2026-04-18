@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -48,34 +48,60 @@ def _get_queue():
 # Request / Response schemas (inline to keep things simple for now)
 # ---------------------------------------------------------------------------
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# Maps camelCase keys sent by mobile clients to the snake_case names used internally.
+_CAMEL_TO_SNAKE = {
+    "deviceId": "device_id",
+    "durationSeconds": "duration_seconds",
+    "contentType": "content_type",
+    "jobId": "job_id",
+    "fileSizeBytes": "file_size_bytes",
+    "surveyJobId": "survey_job_id",
+    "floorId": "floor_id",
+    "roomLabel": "room_label",
+}
+
+
+def _normalise_keys(data: dict) -> dict:
+    return {_CAMEL_TO_SNAKE.get(k, k): v for k, v in data.items()}
 
 
 class UploadInitRequest(BaseModel):
-    device_id: str = Field(..., min_length=1, alias="deviceId")
-    duration_seconds: int = Field(..., ge=5, le=120, alias="durationSeconds")
-    content_type: str = Field(default="video/mp4", alias="contentType")
+    device_id: str = Field(..., min_length=1)
+    duration_seconds: int = Field(..., ge=0, le=120)
+    content_type: str = "video/mp4"
+    title: Optional[str] = None
 
-    model_config = {"populate_by_name": True}
+    # Building / location context (from Android)
+    survey_job_id: Optional[str] = None
+    floor_id: Optional[str] = None
+    room_label: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_camel_case(cls, data):
+        if isinstance(data, dict):
+            return _normalise_keys(data)
+        return data
 
 
 class UploadInitResponse(BaseModel):
-    job_id: uuid.UUID = Field(alias="jobId")
-    upload_url: str = Field(alias="uploadUrl")
-    expires_at: str = Field(alias="expiresAt")
-
-    model_config = {"populate_by_name": True}
-
-    def model_dump(self, **kwargs):
-        kwargs.setdefault("by_alias", True)
-        return super().model_dump(**kwargs)
+    job_id: uuid.UUID
+    upload_url: str
+    expires_at: str
 
 
 class UploadCompleteRequest(BaseModel):
-    job_id: uuid.UUID = Field(..., alias="jobId")
-    file_size_bytes: int = Field(..., gt=0, alias="fileSizeBytes")
+    job_id: uuid.UUID
+    file_size_bytes: int = Field(..., gt=0)
 
-    model_config = {"populate_by_name": True}
+    @model_validator(mode="before")
+    @classmethod
+    def accept_camel_case(cls, data):
+        if isinstance(data, dict):
+            return _normalise_keys(data)
+        return data
 
 
 class UploadCompleteResponse(BaseModel):
@@ -90,7 +116,7 @@ class ResultSchema(BaseModel):
     confidence: float
     bbox: list[float]
     frame_timestamp: float
-    metadata: dict[str, Any] | None
+    metadata: Optional[dict[str, Any]]
 
     class Config:
         from_attributes = True
@@ -107,11 +133,15 @@ class JobDetailResponse(BaseModel):
     job_id: uuid.UUID
     status: str
     created_at: str
-    started_at: str | None = None
-    completed_at: str | None = None
-    results: list[ResultSchema] | None = None
-    summary: SummarySchema | None = None
-    error_message: str | None = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    title: Optional[str] = None
+    survey_job_id: Optional[str] = None
+    floor_id: Optional[str] = None
+    room_label: Optional[str] = None
+    results: Optional[list[ResultSchema]] = None
+    summary: Optional[SummarySchema] = None
+    error_message: Optional[str] = None
 
 
 class RetryResponse(BaseModel):
@@ -139,6 +169,11 @@ def upload_init(body: UploadInitRequest, db: Session = Depends(get_db)) -> Uploa
     job = Job(
         device_id=body.device_id,
         duration_seconds=body.duration_seconds,
+        content_type=body.content_type,
+        title=body.title,
+        survey_job_id=body.survey_job_id,
+        floor_id=body.floor_id,
+        room_label=body.room_label,
         status=JobStatus.pending,
     )
     db.add(job)
@@ -191,16 +226,22 @@ def upload_complete(body: UploadCompleteRequest, db: Session = Depends(get_db)) 
 @router.get(
     "/api/v1/jobs/{job_id}",
     response_model=JobDetailResponse,
-    dependencies=[Depends(verify_token)],
 )
-def get_job(job_id: uuid.UUID, db: Session = Depends(get_db)) -> JobDetailResponse:
+def get_job(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: dict = Depends(verify_token)
+) -> JobDetailResponse:
     """Return job status, results, and summary."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    results_list: list[ResultSchema] | None = None
-    summary: SummarySchema | None = None
+    # IDOR Protection: In a real system, we'd check if job.user_id == user['sub']
+    # For MVP, we at least ensure the token is valid before returning sensitive data.
+
+    results_list: Optional[list[ResultSchema]] = None
+    summary: Optional[SummarySchema] = None
 
     if job.status == JobStatus.completed:
         results_list = [
@@ -232,6 +273,10 @@ def get_job(job_id: uuid.UUID, db: Session = Depends(get_db)) -> JobDetailRespon
         created_at=job.created_at.isoformat(),
         started_at=job.started_at.isoformat() if job.started_at else None,
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
+        title=job.title,
+        survey_job_id=job.survey_job_id,
+        floor_id=job.floor_id,
+        room_label=job.room_label,
         results=results_list,
         summary=summary,
         error_message=job.error_message,

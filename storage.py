@@ -88,10 +88,9 @@ def generate_presigned_upload_url(job_id: uuid.UUID, content_type: str) -> Presi
             ExpiresIn=UPLOAD_EXPIRY_SECONDS,
         )
     else:
-        # Dev mode: return a local upload endpoint
-        # Use request Host header or configured base URL — never localhost (phone can't reach it)
-        url = f"/api/v1/dev/upload/{job_id}"
-        url = settings.DEV_UPLOAD_BASE_URL.rstrip("/") + url
+        # Dev mode: return a local upload endpoint using the configured base URL
+        # so mobile clients on the same network can reach it.
+        url = f"{settings.BASE_URL}/api/v1/dev/upload/{job_id}"
     return {"url": url, "expires_at": expires_at.isoformat()}
 
 
@@ -108,7 +107,7 @@ def generate_presigned_download_url(key: str) -> str:
             ExpiresIn=DOWNLOAD_EXPIRY_SECONDS,
         )
     else:
-        return f"http://localhost:8000/api/v1/dev/download/{key}"
+        return f"{settings.BASE_URL}/api/v1/dev/download/{key}"
 
 
 def download_to_file(key: str, dest: str) -> None:

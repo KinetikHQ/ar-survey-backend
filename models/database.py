@@ -53,6 +53,14 @@ class Job(Base):
     )
     video_key = Column(String(512), nullable=True)
     duration_seconds = Column(Integer, nullable=True)
+    content_type = Column(String(50), nullable=True, default="video/mp4")
+    title = Column(String(255), nullable=True)
+
+    # Building / location context (from Android)
+    survey_job_id = Column(String(255), nullable=True)
+    floor_id = Column(String(255), nullable=True)
+    room_label = Column(String(255), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
