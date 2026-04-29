@@ -137,3 +137,25 @@ def save_local_file(job_id: uuid.UUID, data: bytes) -> str:
 def get_video_key(job_id: uuid.UUID) -> str:
     """Public accessor for the S3 key pattern."""
     return _video_key(job_id)
+
+
+def storage_object_exists(key: str, expected_size: int | None = None) -> bool:
+    """Return whether an uploaded video object exists and optionally matches size."""
+    s3 = _get_s3()
+    if s3:
+        try:
+            meta = s3.head_object(Bucket=settings.S3_BUCKET, Key=key)
+        except Exception as e:
+            logger.warning("Uploaded object missing in S3: key=%s error=%s", key, e)
+            return False
+        size = int(meta.get("ContentLength", 0))
+    else:
+        path = _local_storage_dir / Path(key).name
+        if not path.exists() or not path.is_file():
+            return False
+        size = path.stat().st_size
+
+    if expected_size is not None and size != expected_size:
+        logger.warning("Uploaded object size mismatch: key=%s expected=%s actual=%s", key, expected_size, size)
+        return False
+    return 0 < size <= settings.MAX_UPLOAD_BYTES

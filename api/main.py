@@ -14,8 +14,9 @@ from models.session import engine
 
 logger = logging.getLogger(__name__)
 
-# Create tables on startup (fine for dev; use Alembic in production)
-Base.metadata.create_all(bind=engine)
+if settings.ENVIRONMENT.lower() == "development":
+    # Dev convenience only. Production must use Alembic migrations.
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="AR Survey & Inspection API",
@@ -26,13 +27,7 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # CORS — restrict origins in production
 # ---------------------------------------------------------------------------
-_allowed_origins = (
-    ["*"]
-    if settings.ENVIRONMENT == "development"
-    else [
-        # Add your production domains here
-    ]
-)
+_allowed_origins = settings.allowed_origins_list
 
 app.add_middleware(
     CORSMiddleware,

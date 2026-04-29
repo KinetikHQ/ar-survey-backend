@@ -14,7 +14,7 @@ from api.auth import verify_token
 from config import settings
 from models.database import Job, JobStatus, Result
 from models.session import get_db
-from storage import generate_presigned_upload_url, get_video_key
+from storage import generate_presigned_upload_url, get_video_key, storage_object_exists
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -48,7 +48,7 @@ def _get_queue():
 # Request / Response schemas (inline to keep things simple for now)
 # ---------------------------------------------------------------------------
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Maps camelCase keys sent by mobile clients to the snake_case names used internally.
 _CAMEL_TO_SNAKE = {
@@ -68,15 +68,23 @@ def _normalise_keys(data: dict) -> dict:
 
 
 class UploadInitRequest(BaseModel):
-    device_id: str = Field(..., min_length=1)
+    device_id: str = Field(..., min_length=1, max_length=255)
     duration_seconds: int = Field(..., ge=0, le=120)
     content_type: str = "video/mp4"
-    title: Optional[str] = None
+    title: Optional[str] = Field(default=None, max_length=255)
 
     # Building / location context (from Android)
-    survey_job_id: Optional[str] = None
-    floor_id: Optional[str] = None
-    room_label: Optional[str] = None
+    survey_job_id: Optional[str] = Field(default=None, max_length=255)
+    floor_id: Optional[str] = Field(default=None, max_length=255)
+    room_label: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("content_type")
+    @classmethod
+    def validate_content_type(cls, value: str) -> str:
+        normalised = value.lower().strip()
+        if normalised not in settings.allowed_upload_content_types_set:
+            raise ValueError(f"Unsupported upload content type: {value}")
+        return normalised
 
     @model_validator(mode="before")
     @classmethod
@@ -94,7 +102,7 @@ class UploadInitResponse(BaseModel):
 
 class UploadCompleteRequest(BaseModel):
     job_id: uuid.UUID
-    file_size_bytes: int = Field(..., gt=0)
+    file_size_bytes: int = Field(..., gt=0, le=settings.MAX_UPLOAD_BYTES)
 
     @model_validator(mode="before")
     @classmethod
@@ -193,6 +201,23 @@ def upload_init(body: UploadInitRequest, db: Session = Depends(get_db)) -> Uploa
     )
 
 
+def enqueue_processing(job: Job) -> str:
+    """Enqueue a job exactly once; already-active jobs are idempotent."""
+    if job.status in {JobStatus.processing, JobStatus.completed}:
+        return job.status
+
+    queue = _get_queue()
+    if queue:
+        queue.enqueue("workers.processor.process_clip", str(job.id))
+    else:
+        # Dev mode: process inline in a background thread
+        import threading
+        from workers.processor import process_clip
+        t = threading.Thread(target=process_clip, args=(str(job.id),), daemon=True)
+        t.start()
+    return job.status
+
+
 @router.post(
     "/api/v1/upload/complete",
     response_model=UploadCompleteResponse,
@@ -204,21 +229,22 @@ def upload_complete(body: UploadCompleteRequest, db: Session = Depends(get_db)) 
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     if job.status != JobStatus.pending:
+        if job.status in {JobStatus.processing, JobStatus.completed}:
+            return UploadCompleteResponse(job_id=job.id, status=job.status)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Job is already in status '{job.status}', expected 'pending'",
         )
+    if not job.video_key:
+        job.video_key = get_video_key(job.id)
+        db.commit()
+    if not storage_object_exists(job.video_key, expected_size=body.file_size_bytes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded video object not found or size does not match",
+        )
 
-    # Enqueue the RQ job, or process inline if Redis unavailable
-    queue = _get_queue()
-    if queue:
-        queue.enqueue("workers.processor.process_clip", str(job.id))
-    else:
-        # Dev mode: process inline in a background thread
-        import threading
-        from workers.processor import process_clip
-        t = threading.Thread(target=process_clip, args=(str(job.id),), daemon=True)
-        t.start()
+    enqueue_processing(job)
 
     return UploadCompleteResponse(job_id=job.id, status=job.status)
 
@@ -304,14 +330,12 @@ def retry_job(job_id: uuid.UUID, db: Session = Depends(get_db)) -> RetryResponse
     job.retry_count += 1
     db.commit()
 
-    queue = _get_queue()
-    if queue:
-        queue.enqueue("workers.processor.process_clip", str(job.id))
-    else:
-        import threading
-        from workers.processor import process_clip
-        t = threading.Thread(target=process_clip, args=(str(job.id),), daemon=True)
-        t.start()
+    if not job.video_key or not storage_object_exists(job.video_key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded video object not found; cannot retry processing",
+        )
+    enqueue_processing(job)
 
     return RetryResponse(job_id=job.id, status=job.status)
 

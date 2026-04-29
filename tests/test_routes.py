@@ -340,12 +340,18 @@ def test_upload_complete_returns_success(client):
     )
     job_id = init_resp.json()["job_id"]
 
+    # Upload bytes before completing — production path validates storage exists.
+    upload_body = b"0" * 1024
+    upload_resp = client.put(f"/api/v1/dev/upload/{job_id}", content=upload_body)
+    assert upload_resp.status_code == 200
+
     # Complete upload
-    resp = client.post(
-        "/api/v1/upload/complete",
-        json={"job_id": job_id, "file_size_bytes": 1024000},
-        headers=auth(),
-    )
+    with patch("api.routes.enqueue_processing", return_value="pending"):
+        resp = client.post(
+            "/api/v1/upload/complete",
+            json={"job_id": job_id, "file_size_bytes": len(upload_body)},
+            headers=auth(),
+        )
     assert resp.status_code == 200
     assert resp.json()["status"] == "pending"
 
